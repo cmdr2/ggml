@@ -478,6 +478,7 @@ extern "C" {
         GGML_OP_ROPE,
         GGML_OP_ROPE_BACK,
         GGML_OP_CLAMP,
+        GGML_OP_CONV_2D,
         GGML_OP_CONV_TRANSPOSE_1D,
         GGML_OP_IM2COL,
         GGML_OP_IM2COL_BACK,
@@ -1637,7 +1638,8 @@ extern "C" {
             int                   p0,  // padding dimension 0
             int                   p1,  // padding dimension 1
             int                   d0,  // dilation dimension 0
-            int                   d1); // dilation dimension 1
+            int                   d1, // dilation dimension 1
+            bool                  new_impl); // use new implementation
 
     // kernel size is a->ne[0] x a->ne[1]
     // stride is equal to kernel size

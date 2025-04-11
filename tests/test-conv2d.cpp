@@ -47,8 +47,8 @@ void load_model(test_model & model, bool use_gpu = false) {
     }
 
     // Convert adata to fp16 format
-    std::vector<ggml_fp16_t> hadata(KW * KH * IC * OC);
-    ggml_fp32_to_fp16_row(adata.data(), hadata.data(), KW * KH * IC * OC);
+    // std::vector<ggml_fp16_t> hadata(KW * KH * IC * OC);
+    // ggml_fp32_to_fp16_row(adata.data(), hadata.data(), KW * KH * IC * OC);
 
     // Initialize bdata
     std::vector<float> bdata(IW * IH * IC * N);
@@ -58,7 +58,7 @@ void load_model(test_model & model, bool use_gpu = false) {
 
     size_t buffer_size = 0;
     {
-        buffer_size += KW * KH * IC * OC * ggml_type_size(GGML_TYPE_F16); // tensor a
+        buffer_size += KW * KH * IC * OC * ggml_type_size(GGML_TYPE_F32); // tensor a
         buffer_size += IW * IH * IC * N  * ggml_type_size(GGML_TYPE_F32); // tensor b
         buffer_size += 1024; // overhead
     }
@@ -107,7 +107,7 @@ void load_model(test_model & model, bool use_gpu = false) {
     model.ctx = ggml_init(params);
 
     // create tensors
-    model.a = ggml_new_tensor_4d(model.ctx, GGML_TYPE_F16,  KW, KH, IC, OC);
+    model.a = ggml_new_tensor_4d(model.ctx, GGML_TYPE_F32,  KW, KH, IC, OC);
     model.b = ggml_new_tensor_4d(model.ctx, GGML_TYPE_F32, IW, IH, IC, N);
 
     // create a allocator
@@ -118,9 +118,9 @@ void load_model(test_model & model, bool use_gpu = false) {
 
     // load data to buffer
     if(ggml_backend_is_cpu(model.backend)) {
-        memcpy(model.a->data, hadata.data(), ggml_nbytes(model.a));
+        memcpy(model.a->data, adata.data(), ggml_nbytes(model.a));
     } else {
-        ggml_backend_tensor_set(model.a, hadata.data(), 0, ggml_nbytes(model.a));
+        ggml_backend_tensor_set(model.a, adata.data(), 0, ggml_nbytes(model.a));
     }
 
     // alloc memory
@@ -165,7 +165,7 @@ struct ggml_cgraph * build_graph(const test_model& model) {
     ggml_build_forward_expand(gf, im2col_0);
 
     // recalculate for avoid fragmentation
-    struct ggml_tensor* conv2d_res = ggml_conv_2d(ctx0, model.a, model.b, s0, s1, p0, p1, d0, d1);
+    struct ggml_tensor* conv2d_res = ggml_conv_2d(ctx0, model.a, model.b, s0, s1, p0, p1, d0, d1, true);
     ggml_set_name(conv2d_res, "conv2d_res");
     ggml_build_forward_expand(gf, conv2d_res);
 
@@ -375,6 +375,7 @@ int main(void)
     passed = true;
     for(int i = 0; i < n_conv2d_test; i++) {
         if(conv2d_data[i] != expected_conv2d[i]) {
+            printf("%f != %f\n", conv2d_data[i], expected_conv2d[i]);
             passed = false;
             break;
         }

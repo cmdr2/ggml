@@ -197,7 +197,7 @@ static bool load_alphabet(std::vector<yolo_image> & alphabet)
 
 static ggml_tensor * apply_conv2d(ggml_context * ctx, ggml_tensor * input, const conv2d_layer & layer)
 {
-    struct ggml_tensor * result = ggml_conv_2d(ctx, layer.weights, input, 1, 1, layer.padding, layer.padding, 1, 1);
+    struct ggml_tensor * result = ggml_conv_2d(ctx, layer.weights, input, 1, 1, layer.padding, layer.padding, 1, 1, false);
     if (layer.batch_normalize) {
         result = ggml_sub(ctx, result, ggml_repeat(ctx, layer.rolling_mean, result));
         result = ggml_div(ctx, result, ggml_sqrt(ctx, ggml_repeat(ctx, layer.rolling_variance, result)));

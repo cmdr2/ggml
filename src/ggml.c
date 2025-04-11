@@ -998,7 +998,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "OPT_STEP_ADAMW",
 };
 
-static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
+static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1052,6 +1052,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "rope(x)",
     "rope_back(x)",
     "clamp(x)",
+    "conv_2d(x)",
     "conv_transpose_1d(x)",
     "im2col(x)",
     "im2col_back(x)",
@@ -1097,7 +1098,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "adamw(x)",
 };
 
-static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
+static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -3993,6 +3994,10 @@ GGML_API struct ggml_tensor * ggml_conv_transpose_1d(
 // a: [OC，IC, KH, KW]
 // b: [N, IC, IH, IW]
 // result: [N, OC, OH, OW]
+// actually:
+// a: [KW, KH, IC, OC]
+// b: [IW, IH, IC, N]
+// result: [OW, OH, OC, N]
 struct ggml_tensor * ggml_conv_2d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
@@ -4002,7 +4007,34 @@ struct ggml_tensor * ggml_conv_2d(
         int                   p0,
         int                   p1,
         int                   d0,
-        int                   d1) {
+        int                   d1,
+        bool                  new_impl) {
+
+    if (new_impl) {
+        const int64_t OH = ggml_calc_conv_output_size(b->ne[1], a->ne[1], s1, p1, d1);
+        const int64_t OW = ggml_calc_conv_output_size(b->ne[0], a->ne[0], s0, p0, d0);
+
+        GGML_ASSERT((OH > 0) && "b too small compared to a");
+        GGML_ASSERT((OW > 0) && "b too small compared to a");
+
+        const int64_t ne[4] = {
+            OW,
+            OH,
+            a->ne[3],
+            b->ne[3],
+        };
+
+        struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, 4, ne);
+        int32_t params[] = { s0, s1, p0, p1, d0, d1, 1 };
+        ggml_set_op_params(result, params, sizeof(params));
+
+        result->op     = GGML_OP_CONV_2D;
+        result->src[0] = a;
+        result->src[1] = b;
+
+        return result;
+    }
+
     struct ggml_tensor * im2col = ggml_im2col(ctx, a, b, s0, s1, p0, p1, d0, d1, true, a->type); // [N, OH, OW, IC * KH * KW]
 
     struct ggml_tensor * result =
@@ -4023,7 +4055,7 @@ struct ggml_tensor * ggml_conv_2d_sk_p0(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
         struct ggml_tensor  * b) {
-    return ggml_conv_2d(ctx, a, b, a->ne[0], a->ne[1], 0, 0, 1, 1);
+    return ggml_conv_2d(ctx, a, b, a->ne[0], a->ne[1], 0, 0, 1, 1, false);
 }
 
 // ggml_conv_2d_s1_ph
@@ -4032,7 +4064,7 @@ struct ggml_tensor * ggml_conv_2d_s1_ph(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
         struct ggml_tensor  * b) {
-    return ggml_conv_2d(ctx, a, b, 1, 1, a->ne[0] / 2, a->ne[1] / 2, 1, 1);
+    return ggml_conv_2d(ctx, a, b, 1, 1, a->ne[0] / 2, a->ne[1] / 2, 1, 1, false);
 }
 
 // ggml_conv_2d_dw
