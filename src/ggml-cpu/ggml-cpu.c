@@ -50,6 +50,51 @@
 #include "llamafile/sgemm.h"
 #endif
 
+// Structure to store first 10 values of a tensor for debugging
+#define GGML_DEBUG_SAMPLE_COUNT 10
+struct ggml_tensor_debug_values {
+    float values[GGML_DEBUG_SAMPLE_COUNT];
+    int count; // actual number of values stored (may be less than 10 for small tensors)
+};
+
+// Function to save first 10 values of a tensor after computation
+static void ggml_save_tensor_debug_values(struct ggml_tensor * tensor) {
+    if (!tensor || !tensor->data) {
+        return;
+    }
+
+    // Allocate memory for debug values if not already allocated
+    if (tensor->extra == NULL) {
+        tensor->extra = malloc(sizeof(struct ggml_tensor_debug_values));
+        if (!tensor->extra) {
+            return; // allocation failed
+        }
+    }
+
+    struct ggml_tensor_debug_values * debug = (struct ggml_tensor_debug_values *)tensor->extra;
+    
+    int64_t n_elements = ggml_nelements(tensor);
+    debug->count = (int)(n_elements < GGML_DEBUG_SAMPLE_COUNT ? n_elements : GGML_DEBUG_SAMPLE_COUNT);
+    
+    // Copy first N values based on tensor type
+    if (tensor->type == GGML_TYPE_F32) {
+        const float * data = (const float *)tensor->data;
+        for (int i = 0; i < debug->count; i++) {
+            debug->values[i] = data[i];
+        }
+    } else if (tensor->type == GGML_TYPE_F16) {
+        const ggml_fp16_t * data = (const ggml_fp16_t *)tensor->data;
+        for (int i = 0; i < debug->count; i++) {
+            debug->values[i] = ggml_fp16_to_fp32(data[i]);
+        }
+    } else {
+        // For other types, we'd need to handle them appropriately
+        for (int i = 0; i < debug->count; i++) {
+            debug->values[i] = -1.0f;
+        }
+    }
+}
+
 // Note: once we move threading into a separate C++ file
 // will use std::hardware_destructive_interference_size instead of hardcoding it here
 // and we'll use C++ attribute syntax.
@@ -2885,6 +2930,11 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
         struct ggml_tensor * node = cgraph->nodes[node_n];
 
         ggml_compute_forward(&params, node);
+
+        // Save debug values after computation (only in thread 0 to avoid race conditions)
+        if (state->ith == 0) {
+            ggml_save_tensor_debug_values(node);
+        }
 
         if (state->ith == 0 && cplan->abort_callback &&
                 cplan->abort_callback(cplan->abort_callback_data)) {
