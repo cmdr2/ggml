@@ -391,6 +391,8 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     const int cc = ggml_cuda_info().devices[device].cc;
 
     switch (K->ne[0]) {
+        case  16:
+        case  32:
         case  40:
         case  64:
         case  72:
@@ -458,7 +460,7 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     const bool can_use_vector_kernel = Q->ne[0] <= 256 && Q->ne[0] % 64 == 0 && Q->ne[0] != 192 && K->ne[1] % FATTN_KQ_STRIDE == 0;
 
     // If Turing tensor cores are available, use them:
-    if (turing_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+    if (turing_mma_available(cc) && Q->ne[0] != 16 && Q->ne[0] != 32 && Q->ne[0] != 40 && Q->ne[0] != 72) {
         if (can_use_vector_kernel) {
             if (!ggml_is_quantized(K->type) && !ggml_is_quantized(V->type)) {
                 if (cc >= GGML_CUDA_CC_ADA_LOVELACE && Q->ne[1] == 1 && Q->ne[3] == 1 && !(gqa_ratio > 4 && K->ne[1] >= 8192)) {
@@ -488,7 +490,7 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
         gqa_ratio_eff *= 2;
     }
 
-    if (volta_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+    if (volta_mma_available(cc) && Q->ne[0] != 16 && Q->ne[0] != 32 && Q->ne[0] != 40 && Q->ne[0] != 72) {
         if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
             return BEST_FATTN_KERNEL_VEC;
         }
@@ -499,7 +501,7 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     }
 
     // AMD MFMA needs a certain minimum batch size to outscale the tile kernel for large head sizes.
-    if ((amd_mfma_available(cc) && Q->ne[0] <= 256) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+    if ((amd_mfma_available(cc) && Q->ne[0] <= 256) && Q->ne[0] != 16 && Q->ne[0] != 32 && Q->ne[0] != 40 && Q->ne[0] != 72) {
         if ((Q->ne[0] <= 64 && Q->ne[1] * gqa_ratio_eff > 8)) {
             return BEST_FATTN_KERNEL_MMA_F16;
         }
@@ -512,7 +514,7 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     }
 
     // AMD WMMA is always faster than the tile kernel if the full tile width of 16 can be utilized.
-    if ((amd_wmma_available(cc) && gqa_opt_applies && Q->ne[0] <= 128) && Q->ne[0] != 40 && Q->ne[0] != 72 && Q->ne[1] * gqa_ratio_eff > 8) {
+    if ((amd_wmma_available(cc) && gqa_opt_applies && Q->ne[0] <= 128) && Q->ne[0] != 16 && Q->ne[0] != 32 && Q->ne[0] != 40 && Q->ne[0] != 72 && Q->ne[1] * gqa_ratio_eff > 8) {
         return BEST_FATTN_KERNEL_MMA_F16;
     }
 
